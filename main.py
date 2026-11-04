@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -94,8 +95,7 @@ def get_crop_guidance(crop: str, growth_stage: str = "unspecified") -> str:
 
 
 SYSTEM_PROMPT = """You are KrishiMitra, a climate-resilience assistant for smallholder farmers in India.
-You MUST use get_weather_forecast for the requested location and get_crop_guidance for the crop before giving a climate advisory. Never invent weather values, rainfall, forecast, government advisories, or citations. If a tool fails, clearly state that the data could not be retrieved and do not fill the gap with guesses.
-Explain the forecast in accessible language and answer in the requested language (Kannada or English). Give a concise structured response: (1) what the live forecast says, (2) possible crop/weather risk with uncertainty, (3) low-regret actions the farmer can consider, (4) what not to do without local expert advice, (5) sources and timestamp. Do not prescribe pesticide/fertilizer dosages, guarantee yields, or make high-risk irreversible decisions. Make clear this is decision support, not official agricultural advice. Mention when KVK/extension officer/official local advisory should be consulted."""
+You MUST use get_crop_guidance for the crop before giving advice. The backend fetches weather directly and displays it in a verified data panel. Do NOT restate weather numbers, dates, rainfall amounts, or claim that it is rainy/dry/no-rain; the UI handles forecast facts. Focus only on crop-stage considerations, low-regret monitoring/actions, and what requires local expert advice. Never invent crop-specific facts, government advisories, or citations. Do not prescribe pesticide/fertilizer dosages, guarantee yields, or make high-risk irreversible decisions. Answer in the requested language (Kannada or English). Make clear this is decision support, not official agricultural advice. Mention when KVK/extension officer/official local advisory should be consulted."""
 
 
 def build_agent() -> Agent:
@@ -123,17 +123,60 @@ def health():
 
 @app.post("/api/advisory")
 def advisory(req: AdvisoryRequest):
-    prompt = (
-        f"Farmer location: {req.location}. Crop: {req.crop}. Growth stage: {req.growth_stage}. "
-        f"Respond in {req.language}. Farmer question: {req.question}. "
-        "Use the weather and crop guidance tools; do not assume data that the tools did not return."
-    )
     try:
+        # Fetch weather outside the LLM so the UI can show verified source data
+        # and the model receives a trusted snapshot rather than relying on memory.
+        weather = json.loads(get_weather_forecast(req.location))
+        if weather.get("error"):
+            raise HTTPException(status_code=502, detail=weather["error"])
+        snapshot = {
+            "resolved_location": weather.get("resolved_location"),
+            "current": weather.get("current"),
+            "daily": weather.get("daily"),
+            "source": weather.get("source"),
+            "retrieved_at_utc": weather.get("retrieved_at_utc"),
+        }
+        prompt = (
+            f"Farmer location: {req.location}. Crop: {req.crop}. Growth stage: {req.growth_stage}. "
+            f"Respond in {req.language}. Farmer question: {req.question}.\n\n"
+            "TRUSTED LIVE WEATHER SNAPSHOT (from server-side Open-Meteo API; use exact values):\n"
+            f"{json.dumps(snapshot, ensure_ascii=False)}\n\n"
+            "Weather snapshot is context only; the UI displays forecast facts separately. Do not state forecast values, dates, or claim rain/no-rain/dry/rainy. "
+            "Use get_crop_guidance and return crop-stage considerations, low-regret actions, and what needs local expert advice. "
+            "Do not invent crop facts or government recommendations."
+        )
         agent = build_agent()
         result = agent(prompt)
-        return {"advisory": str(result), "location": req.location, "crop": req.crop, "language": req.language,
-                "generated_at": datetime.now(timezone.utc).isoformat(), "model": OLLAMA_MODEL,
+        agent_text = str(result)
+        daily = snapshot.get("daily") or {}
+        precip = [float(v or 0) for v in daily.get("precipitation_sum", [])]
+        precip_total = round(sum(precip), 1)
+        probs = [int(v or 0) for v in daily.get("precipitation_probability_max", [])]
+        highs = [float(v) for v in daily.get("temperature_2m_max", []) if v is not None]
+        lows = [float(v) for v in daily.get("temperature_2m_min", []) if v is not None]
+        weather_summary = {
+            "forecast_start": (daily.get("time") or [None])[0],
+            "forecast_end": (daily.get("time") or [None])[-1],
+            "precipitation_total_mm": precip_total,
+            "max_precipitation_probability_percent": max(probs, default=0),
+            "temperature_min_c": min(lows, default=None),
+            "temperature_max_c": max(highs, default=None),
+            "source": "Open-Meteo",
+        }
+        conflict_patterns = [r"no rain (?:expected|forecast)", r"no precipitation (?:expected|forecast)", r"rain[- ]free", r"dry (?:period|spell|forecast)", r"precipitation.{0,30}(?:zero|0 mm)", r"rainfall.{0,30}(?:zero|0 mm)"]
+        conflict = precip_total > 0 and any(re.search(pattern, agent_text, re.IGNORECASE) for pattern in conflict_patterns)
+        agent_status = "rejected_weather_conflict" if conflict else "accepted"
+        if conflict:
+            agent_text = ("The AI response was withheld by KrishiMitra's weather-consistency guard because it contradicted the live forecast. "
+                          "Verified forecast facts are shown above. For this crop stage, monitor soil moisture and field drainage, "
+                          "check the timing of local rainfall, and verify soil conditions before changing irrigation. "
+                          "Do not make irreversible crop decisions from a forecast alone; consult your local KVK/extension officer.")
+        return {"advisory": agent_text, "agent_status": agent_status, "weather_summary": weather_summary,
+                "location": req.location, "crop": req.crop, "language": req.language,
+                "weather": snapshot, "generated_at": datetime.now(timezone.utc).isoformat(), "model": OLLAMA_MODEL,
                 "agent_framework": "Strands Agents SDK", "weather_source": "Open-Meteo"}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Agent execution failed: {type(exc).__name__}: {str(exc)[:300]}") from exc
 
