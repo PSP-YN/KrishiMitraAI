@@ -78,7 +78,7 @@ def get_crop_guidance(crop: str, growth_stage: str = "unspecified") -> str:
             "name": "Finger millet (ragi)",
             "notes": [
                 "Avoid treating a single forecast as a guarantee; verify rainfall locally before irrigation or sowing decisions.",
-                "Establishment and flowering stages can be sensitive to moisture stress; prioritize monitoring the crop and soil moisture.",
+                "Moisture needs vary across establishment, vegetative, flowering, and grain-filling stages; monitor soil moisture and confirm stage-specific decisions with local extension guidance.",
                 "Do not recommend a fertilizer or pesticide dose without soil, crop-stage, and local extension context.",
             ],
         },
@@ -92,6 +92,26 @@ def get_crop_guidance(crop: str, growth_stage: str = "unspecified") -> str:
     if not item:
         item = {"name": crop, "notes": ["Crop-specific recommendations were not found in the curated starter knowledge base.", "Use local agricultural extension/ICAR/KVK guidance; do not make irreversible crop decisions from this generic response."]}
     return json.dumps({"crop": item["name"], "growth_stage": growth_stage, "general_guidance": item["notes"], "caution": "General educational guidance only. Confirm decisions with local KVK/extension officers and official advisories."})
+
+
+WEATHER_CONFLICT_PATTERNS = [
+    r"no rain (?:is )?(?:expected|forecast)",
+    r"no precipitation (?:is )?(?:expected|forecast)",
+    r"rain[- ]free",
+    r"dry (?:period|spell|forecast)",
+    r"precipitation.{0,30}(?:zero|0 mm)",
+    r"rainfall.{0,30}(?:zero|0 mm)",
+]
+
+
+def weather_conflict_detected(agent_text: str, precipitation_total_mm: float) -> bool:
+    """Conservatively catch explicit dry/no-rain claims against a wet 7-day forecast.
+
+    This is a narrow phrase-based guard, not general semantic fact verification.
+    """
+    if precipitation_total_mm <= 0:
+        return False
+    return any(re.search(pattern, agent_text, re.IGNORECASE) for pattern in WEATHER_CONFLICT_PATTERNS)
 
 
 SYSTEM_PROMPT = """You are KrishiMitra, a climate-resilience assistant for smallholder farmers in India.
@@ -163,8 +183,7 @@ def advisory(req: AdvisoryRequest):
             "temperature_max_c": max(highs, default=None),
             "source": "Open-Meteo",
         }
-        conflict_patterns = [r"no rain (?:expected|forecast)", r"no precipitation (?:expected|forecast)", r"rain[- ]free", r"dry (?:period|spell|forecast)", r"precipitation.{0,30}(?:zero|0 mm)", r"rainfall.{0,30}(?:zero|0 mm)"]
-        conflict = precip_total > 0 and any(re.search(pattern, agent_text, re.IGNORECASE) for pattern in conflict_patterns)
+        conflict = weather_conflict_detected(agent_text, precip_total)
         agent_status = "rejected_weather_conflict" if conflict else "accepted"
         if conflict:
             agent_text = ("The AI response was withheld by KrishiMitra's weather-consistency guard because it contradicted the live forecast. "

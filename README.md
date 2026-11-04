@@ -11,7 +11,9 @@ KrishiMitra translates a live weather forecast into cautious, crop-aware guidanc
 - Supports ragi, paddy, maize, groundnut and a safe fallback for other crops.
 - Returns a simple explanation, potential risks, low-regret actions and uncertainty.
 - Runs locally with Ollama; no paid inference API key is required for the demo.
-- Displays forecast facts directly from Open-Meteo instead of relying on the LLM to restate them.\n- Includes a weather-consistency guard that withholds AI text if it contradicts the live forecast.\n- Reports model/weather failures rather than fabricating observations.
+- Displays verified weather facts separately from model interpretation, including source and retrieval timestamp.
+- Uses a narrow phrase-based consistency guard to withhold common explicit no-rain/dry claims when the 7-day precipitation total is positive. This is not general semantic fact verification.
+- Reports model/weather failures rather than fabricating observations.
 
 ## Architecture
 
@@ -20,14 +22,14 @@ Browser UI (HTML/CSS/JS)
         │ POST /api/advisory
         ▼
 FastAPI backend
-        │
-        ▼
-Strands Agent ───── Ollama (local Qwen model)
-   ├── get_weather_forecast(location)
-   │      ├── Open-Meteo geocoding
-   │      └── Open-Meteo forecast
-   └── get_crop_guidance(crop, growth_stage)
-          └── curated starter guidance + caution
+   ├── Open-Meteo geocoding + forecast (verified server-side snapshot)
+   ├── Strands Agent ───── Ollama (local Qwen model)
+   │      ├── get_weather_forecast(location)
+   │      └── get_crop_guidance(crop, growth_stage)
+   ├── narrow weather-consistency guard
+   └── source-backed response
+          ├── verified weather facts + timestamp
+          └── cautious crop guidance
 ```
 
 ## Run locally (Fedora/Linux)
@@ -76,6 +78,15 @@ Example:
   "question": "What climate risks should I watch for this week?"
 }
 ```
+
+## Tests
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+python -m py_compile main.py
+```
+
+The weather guard tests cover explicit no-rain/dry claims, neutral wording, and the zero-rainfall case. They do not establish general factual correctness of model output.
 
 ## Social impact and measurement
 
