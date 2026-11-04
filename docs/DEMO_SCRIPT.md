@@ -28,9 +28,9 @@ Narration: “Weather facts are displayed separately from model interpretation. 
 
 ### 1:55–2:20 — Social good and accessibility
 
-Switch response language to Kannada and generate a second request if time permits.
+Show that the current prototype is English-only. Explain that Kannada localization is planned but deliberately disabled until native-speaker review confirms that the model's agronomic wording is understandable and accurate.
 
-Narration: “The goal is accessible climate information for smallholder farmers, including Kannada-speaking users. This is a decision-support prototype, not an official advisory.”
+Narration: “The goal is to make climate information easier to interpret for smallholder farmers. Kannada localization is a planned next step, not a currently enabled feature. This is a decision-support prototype, not an official advisory.”
 
 ### 2:20–2:40 — Technical close
 
@@ -45,7 +45,7 @@ Narration: “KrishiMitra is open source and built with Strands Agents SDK, Fast
 - [ ] Open-Meteo returns current data and a seven-day forecast.
 - [ ] Weather facts match the source response.
 - [ ] Weather guard unit tests pass.
-- [ ] Kannada output is checked before recording it as a supported demo.
+- [ ] The demo clearly states that Kannada localization is not enabled in this build.
 - [ ] Browser zoom is readable and notifications are hidden.
 - [ ] Final video is under 180 seconds.
 - [ ] Upload to a public/unlisted video URL and add it to Builder Center.

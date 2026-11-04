@@ -2,7 +2,7 @@
 
 Weather: Open-Meteo (live forecast, no API key).
 Agent orchestration: Strands Agents SDK.
-Local model: Ollama (Qwen 2.5 VL 3B by default).
+Local model: Ollama (Qwen 2.5 3B by default).
 """
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ app = FastAPI(title="KrishiMitra AI", version="0.1.0", description="Climate-resi
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
-@tool
 def get_weather_forecast(location: str) -> str:
     """Fetch a real 7-day weather forecast for a city, village, or place name using Open-Meteo."""
     try:
@@ -114,21 +113,25 @@ def weather_conflict_detected(agent_text: str, precipitation_total_mm: float) ->
     return any(re.search(pattern, agent_text, re.IGNORECASE) for pattern in WEATHER_CONFLICT_PATTERNS)
 
 
-SYSTEM_PROMPT = """You are KrishiMitra, a climate-resilience assistant for smallholder farmers in India.
-You MUST use get_crop_guidance for the crop before giving advice. The backend fetches weather directly and displays it in a verified data panel. Do NOT restate weather numbers, dates, rainfall amounts, or claim that it is rainy/dry/no-rain; the UI handles forecast facts. Focus only on crop-stage considerations, low-regret monitoring/actions, and what requires local expert advice. Never invent crop-specific facts, government advisories, or citations. Do not prescribe pesticide/fertilizer dosages, guarantee yields, or make high-risk irreversible decisions. Answer in the requested language (Kannada or English). Make clear this is decision support, not official agricultural advice. Mention when KVK/extension officer/official local advisory should be consulted."""
+SYSTEM_PROMPT = """You are KrishiMitra, a cautious climate-resilience assistant for smallholder farmers in India.
+You MUST call get_crop_guidance for the crop and growth stage before answering. The backend retrieves weather independently and displays verified facts separately. Never repeat weather numbers or make claims that it is rainy, dry, or rain-free. Focus on crop-stage monitoring, low-risk actions, and questions that need local expert advice. Do not invent crop facts, government schemes, official advisories, or citations. Never prescribe pesticide/fertilizer doses, guarantee yields, or recommend irreversible actions. Reply in simple English and no more than five concise points (about 120 words). State that this is decision support, not official agricultural advice, and recommend local KVK/extension guidance for high-stakes decisions."""
 
 
 def build_agent() -> Agent:
-    model = OllamaModel(host=OLLAMA_HOST, model_id=OLLAMA_MODEL, temperature=0.2)
-    return Agent(model=model, tools=[get_weather_forecast, get_crop_guidance], system_prompt=SYSTEM_PROMPT)
+    model = OllamaModel(host=OLLAMA_HOST, model_id=OLLAMA_MODEL, temperature=0.2, max_tokens=768)
+    # Weather is fetched once by the API so verified source facts and the
+    # model's interpretation remain separate. The agent tool supplies crop context.
+    return Agent(model=model, tools=[get_crop_guidance], system_prompt=SYSTEM_PROMPT)
 
 
 class AdvisoryRequest(BaseModel):
+    model_config = {"str_strip_whitespace": True}
+
     location: str = Field(min_length=2, max_length=120)
     crop: str = Field(min_length=2, max_length=80)
     growth_stage: str = Field(default="Not sure", max_length=100)
-    language: str = Field(default="English", max_length=30)
-    question: str = Field(default="What climate risks should I watch for this week?", max_length=1000)
+    language: str = Field(default="English", pattern="^English$")
+    question: str = Field(default="What climate risks should I watch for this week?", min_length=3, max_length=1000)
 
 
 @app.get("/")
@@ -138,7 +141,26 @@ def home():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "agent_framework": "Strands Agents SDK", "model": OLLAMA_MODEL, "provider": "Ollama", "weather_source": "Open-Meteo"}
+    """Report real local model availability instead of assuming the agent is ready."""
+    ollama_reachable = False
+    model_available = False
+    try:
+        response = requests.get(f"{OLLAMA_HOST.rstrip('/')}/api/tags", timeout=2)
+        response.raise_for_status()
+        ollama_reachable = True
+        available = {item.get("name") for item in response.json().get("models", [])}
+        model_available = OLLAMA_MODEL in available
+    except (requests.RequestException, ValueError):
+        pass
+    return {
+        "status": "ok" if model_available else "degraded",
+        "agent_framework": "Strands Agents SDK",
+        "model": OLLAMA_MODEL,
+        "provider": "Ollama",
+        "ollama_reachable": ollama_reachable,
+        "model_available": model_available,
+        "weather_source": "Open-Meteo",
+    }
 
 
 @app.post("/api/advisory")

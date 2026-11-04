@@ -8,11 +8,11 @@ KrishiMitra AI is an open-source prototype exploring this gap for the Climate Re
 
 ## What KrishiMitra does
 
-A farmer enters a location, crop, growth stage, preferred language, and question. KrishiMitra retrieves current conditions and a seven-day forecast from Open-Meteo, then uses a Strands Agents SDK agent with crop-guidance tools to produce an accessible climate brief. The starter crop set includes ragi, paddy, maize, and groundnut. The interface supports English and Kannada.
+A farmer enters a location, crop, growth stage, and question. KrishiMitra retrieves current conditions and a seven-day forecast from Open-Meteo, then uses a Strands Agents SDK agent with a crop-guidance tool to produce a cautious climate brief in English. The starter crop set includes ragi, paddy, maize, and groundnut. Kannada localization is a planned validation milestone; it is deliberately disabled in this submission build because local-model output did not meet a basic quality check.
 
 ## Why an agent
 
-The workflow combines multiple steps: resolve a place name, retrieve live weather, retrieve crop context, and explain low-regret considerations. Strands Agents SDK provides the model-driven agent loop and tool invocation. The backend also fetches the weather snapshot independently of the model, so the application can display source-backed facts even if generated prose is unreliable.
+The workflow combines multiple steps: resolve a place name, retrieve live weather, retrieve crop context, and explain low-regret considerations. Strands Agents SDK provides the model-driven agent loop and crop-guidance tool invocation. The backend fetches the weather snapshot once, independently of the model, so the application can display source-backed facts even if generated prose is unreliable.
 
 ## Technical architecture
 
@@ -21,10 +21,9 @@ Mobile-friendly HTML/CSS/JavaScript interface
         │ POST /api/advisory
         ▼
 FastAPI backend
-        ├── Open-Meteo geocoding + forecast
+        ├── Open-Meteo geocoding + forecast (server-side)
         ├── Strands Agents SDK
-        │      ├── weather tool
-        │      └── crop-guidance tool
+        │      └── crop-guidance tool + local Ollama model
         ├── narrow weather-consistency guard
         └── verified forecast panel + cautious crop guidance
 ```
@@ -39,11 +38,11 @@ The prototype does not claim to be an official weather alert or agricultural ext
 
 ## Social impact and validation
 
-The intended beneficiaries are smallholder farmers and agricultural learners, including Kannada-speaking communities who need understandable climate information. The prototype has not yet been field-tested, so no crop-loss reduction or farmer-outcome claims are made. Future validation should measure forecast retrieval success, source/timestamp coverage, tool failure rate, response latency, farmer comprehension, and usefulness in supervised usability sessions with farmers and extension personnel.
+The intended beneficiaries are smallholder farmers and agricultural learners who need understandable climate information. Kannada-speaking communities are a target for a future localization phase, which will require native-speaker review. The prototype has not yet been field-tested, so no crop-loss reduction or farmer-outcome claims are made. Future validation should measure forecast retrieval success, source/timestamp coverage, tool failure rate, response latency, farmer comprehension, and usefulness in supervised usability sessions with farmers and extension personnel.
 
 ## What I learned
 
-The main engineering lesson is that a fluent agent response is not evidence of correctness. A model can misstate source data even when the tool result is available. Separating source facts from model interpretation, then checking generated claims against those facts, is essential for climate-related decision support.
+The main engineering lesson is that a fluent agent response is not evidence of correctness. A model can misstate source data even when the tool result is available. Separating source facts from model interpretation, then checking a narrow set of explicit contradictions, is essential for climate-related decision support. The guard is phrase-based and is not general semantic verification.
 
 ## Try it
 
