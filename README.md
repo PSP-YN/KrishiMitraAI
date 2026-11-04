@@ -11,7 +11,7 @@ KrishiMitra translates a live weather forecast into cautious, crop-aware guidanc
 - Supports ragi, paddy, maize, groundnut and a safe fallback for other crops.
 - Returns a simple explanation, potential risks, low-regret actions and uncertainty.
 - Runs locally with Ollama; no paid inference API key is required for the demo.
-- Reports model/weather failures rather than fabricating observations.
+- Displays forecast facts directly from Open-Meteo instead of relying on the LLM to restate them.\n- Includes a weather-consistency guard that withholds AI text if it contradicts the live forecast.\n- Reports model/weather failures rather than fabricating observations.
 
 ## Architecture
 
