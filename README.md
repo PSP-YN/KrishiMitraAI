@@ -85,7 +85,7 @@ export PORT=8000
 uvicorn main:app --host 127.0.0.1 --port "$PORT"
 ```
 
-Open <http://127.0.0.1:8000>. The API documentation is available at <http://127.0.0.1:8000/docs>.
+Open <http://127.0.0.1:8000>. The API documentation is available at <http://127.0.0.1:8000/docs>. For a preflight check that Ollama and the configured model are available before startup, use `./scripts/run-local.sh` (see [`docs/LOCAL_DEMO.md`](docs/LOCAL_DEMO.md)).
 
 ### 4. Verify dependencies and run tests
 
@@ -93,6 +93,10 @@ Open <http://127.0.0.1:8000>. The API documentation is available at <http://127.
 curl -sS http://127.0.0.1:8000/api/health
 python -m unittest discover -s tests -v
 python -m py_compile main.py
+
+# Optional pytest runner and CI-equivalent command
+python -m pip install -r requirements-dev.txt
+PYTHONPATH=. pytest -q
 ```
 
 `/api/health` returns `status: ok` only when Ollama is reachable and the configured model is installed. A `degraded` status means the model dependency is unavailable; the endpoint does not claim the agent is ready.
@@ -131,8 +135,11 @@ KrishiMitraAI/
 ├── tests/
 │   ├── test_api.py         # API, validation, health, and asset tests
 │   └── test_weather_guard.py
+├── .github/workflows/ci.yml # GitHub Actions test workflow
+├── scripts/run-local.sh     # Ollama preflight + local server launcher
+├── requirements-dev.txt    # Test tooling
 ├── docs/
-│   ├── ARCHITECTURE.md     # Request flow, trust boundaries, limitations
+│   ├── LOCAL_DEMO.md     # Request flow, trust boundaries, limitations
 │   ├── BUILDER_CENTER_ARTICLE.md
 │   ├── DEMO_SCRIPT.md
 │   └── PITCH.md
